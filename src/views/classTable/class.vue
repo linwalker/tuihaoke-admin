@@ -2,10 +2,12 @@
   <!-- $t is vue-i18n global function to translate lang -->
   <div class="app-container">
     <FilenameOption v-model="filename" />
-    <AutoWidthOption v-model="autoWidth" />
     <BookTypeOption v-model="bookType" />
-    <div>
-      <el-button :loading="downloadLoading" style="margin:0 0 20px 20px;" type="primary" icon="document" @click="handleDownload">{{ $t('excel.export') }} Excel</el-button>
+    <el-button :loading="downloadLoading" style="margin:0 0 20px 20px;" type="primary" icon="document" @click="handleDownload">{{ $t('excel.export') }} Excel</el-button>
+    <div style="margin-bottom: 20px">
+      <el-input v-model="listQuery.inviteMobile" placeholder="邀请好友电话" style="width: 200px;" @keyup.enter.native="getList"/>
+      <el-input v-model="listQuery.enrollMobile" placeholder="邀请报名电话" style="width: 200px;" @keyup.enter.native="getList"/>
+      <el-button @click="getList">search</el-button>
     </div>
     <el-table v-loading="listLoading" :data="list" element-loading-text="拼命加载中" border fit highlight-current-row>
       <el-table-column align="center" label="编号">
@@ -15,66 +17,71 @@
       </el-table-column>
       <el-table-column label="标识" align="center">
         <template slot-scope="scope">
-          {{ scope.row.type }}
+          {{ scope.row.uid }}
         </template>
       </el-table-column>
       <el-table-column align="center" width="200" label="报名时间" >
         <template slot-scope="scope">
           <i class="el-icon-time"/>
-          <span>{{ scope.row.timestamp | parseTime('{y}-{m}-{d} {h}:{i}') }}</span>
+          <span>{{ scope.row.createdTime }}</span>
         </template>
       </el-table-column>
       <el-table-column label="报名电话" align="center">
         <template slot-scope="scope">
-          {{ scope.row.applyMobile }}
+          {{ scope.row.parentMobile }}
         </template>
       </el-table-column>
       <el-table-column label="孩子姓名" align="center">
         <template slot-scope="scope">
-          {{ scope.row.name }}
+          {{ scope.row.childName }}
         </template>
       </el-table-column>
       <el-table-column label="孩子年龄" align="center">
         <template slot-scope="scope">
-          {{ scope.row.age }}
+          {{ scope.row.childAge }}
         </template>
       </el-table-column>
       <el-table-column label="英语学习时间" align="center">
         <template slot-scope="scope">
-          {{ scope.row.studyTime }}
+          {{ scope.row.studyInterval }}
         </template>
       </el-table-column>
-      <el-table-column label="邀请人电话" align="center">
+      <el-table-column label="邀请好友电话" align="center">
         <template slot-scope="scope">
           {{ scope.row.inviteMobile }}
         </template>
       </el-table-column>
+      <el-table-column label="邀请报名电话" align="center">
+        <template slot-scope="scope">
+          {{ scope.row.enrollMobile }}
+        </template>
+      </el-table-column>
       <el-table-column label="状态" align="center">
         <template slot-scope="scope">
-          {{ scope.row.status === '0' ? '待确认' : '已确认' }}
+          {{ scope.row.status }}
         </template>
       </el-table-column>
       <el-table-column label="操作" align="center">
         <template slot-scope="scope">
-          <el-button :disabled = "scope.row.status == 1" type="primary" size="mini" @click="handleUpdate(scope.row)">确认</el-button>
+          <el-button :disabled = "scope.row.status === '确认'" type="primary" size="mini" @click="confirmClassStatus(scope.row)">确认</el-button>
         </template>
       </el-table-column>
     </el-table>
+    <pagination v-show="total>0" :total="total" :page.sync="listQuery.page" :limit.sync="listQuery.limit" @pagination="getList" />
   </div>
 </template>
 
 <script>
-import { fetchClassList } from '@/api/class'
-import { parseTime } from '@/utils'
+import { fetchClassList, updateClassStatus } from '@/api/class'
 
 // options components
 import FilenameOption from './components/FilenameOption'
-import AutoWidthOption from './components/AutoWidthOption'
 import BookTypeOption from './components/BookTypeOption'
+import Pagination from '@/components/Pagination'
 
 export default {
   name: 'ClassTable',
-  components: { FilenameOption, AutoWidthOption, BookTypeOption },
+  components: { FilenameOption, BookTypeOption, Pagination },
   data() {
     return {
       list: null,
@@ -82,25 +89,45 @@ export default {
       downloadLoading: false,
       filename: '',
       autoWidth: true,
-      bookType: 'xlsx'
+      bookType: 'xlsx',
+      childAge: ['4岁', '5岁', '6岁', '7岁', '8岁', '9岁', '10岁', '11岁', '12岁'],
+      studyInterval: ['没有英语学习经历', '小于半年', '一年', '超过一年'],
+      listQuery: {
+        page: 1,
+        size: 20,
+        enrollMobile: undefined,
+        inviteMobile: undefined,
+        type: undefined
+      },
+      total: 0
     }
   },
   created() {
-    this.fetchData()
+    this.getList()
   },
   methods: {
-    fetchData() {
+    getList() {
       this.listLoading = true
-      fetchClassList().then(response => {
-        this.list = response.data.items
-        this.listLoading = false
+      fetchClassList(this.listQuery).then(res => {
+        if (res.code === 0) {
+          this.list = res.data.reverse().map(item => {
+            item.childAge = this.childAge[item.childAge]
+            item.studyInterval = this.studyInterval[item.studyInterval]
+            item.status = item.status === 0 ? '待确认' : '已确认'
+            return item
+          })
+          this.total = res.data.length
+          setTimeout(() => {
+            this.listLoading = false
+          }, 1.5 * 1000)
+        }
       })
     },
     handleDownload() {
       this.downloadLoading = true
       import('@/vendor/Export2Excel').then(excel => {
-        const tHeader = ['编号', '标识', '报名时间', '报名电话', '孩子姓名', '孩子年龄', '英语学习时间', '邀请人电话', '状态']
-        const filterVal = ['id', 'type', 'timestamp', 'applyMobile', 'name', 'age', 'studyTime', 'inviteMobile', 'status']
+        const tHeader = ['编号', '标识', '报名时间', '报名电话', '孩子姓名', '孩子年龄', '英语学习时间', '状态']
+        const filterVal = ['id', 'uid', 'createdTime', 'parentMobile', 'childName', 'childAge', 'studyInterval', 'status']
         const list = this.list
         const data = this.formatJson(filterVal, list)
         excel.export_json_to_excel({
@@ -115,15 +142,24 @@ export default {
     },
     formatJson(filterVal, jsonData) {
       return jsonData.map(v => filterVal.map(j => {
-        if (j === 'timestamp') {
-          return parseTime(v[j])
-        } else if (j === 'status') {
-          return v[j] === '0' ? '待确认' : '已确认'
-        }
+        return v[j]
       }))
     },
-    handleUpdate(row) {
-      console.log(row)
+    confirmClassStatus(row) {
+      updateClassStatus(row.id).then(res => {
+        if (res.code === 0) {
+          this.$message({
+            message: '操作成功',
+            type: 'success'
+          })
+          this.getList()
+        } else {
+          this.$message({
+            message: res.error,
+            type: 'error'
+          })
+        }
+      })
     }
   }
 }

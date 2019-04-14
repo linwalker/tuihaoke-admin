@@ -44,6 +44,12 @@ const devWebpackConfig = merge(baseWebpackConfig, {
     quiet: true, // necessary for FriendlyErrorsPlugin
     watchOptions: {
       poll: config.dev.poll
+    },
+    proxy: {
+      '/op': {
+        target: 'https://api.rzzhp.com',
+        secure: false
+      }
     }
   },
   plugins: [
