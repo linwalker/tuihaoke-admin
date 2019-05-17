@@ -61,18 +61,33 @@
           {{ scope.row.status }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center">
-        <template slot-scope="scope">
-          <el-button :disabled = "scope.row.status === '确认'" type="primary" size="mini" @click="confirmClassStatus(scope.row)">确认</el-button>
+      <el-table-column label="操作" align="center" width="200">
+        <template v-if="scope.row.status === '待确认'" slot-scope="scope" >
+          <el-button type="primary" size="mini" @click="confirmClassStatusSuccess(scope.row)">成功</el-button>
+          <el-button type="primary" size="mini" @click="openFailureDialog(scope.row.id)">失败</el-button>
+        </template>
+        <template v-if="scope.row.status !== '待确认'" slot-scope="scope" >
+          <el-button type="primary" size="mini" @click="cancelAction(scope.row)">撤销</el-button>
         </template>
       </el-table-column>
     </el-table>
     <pagination v-show="total>0" :total="total" :page.sync="listQuery.page" :limit.sync="listQuery.limit" @pagination="getList" />
+    <el-dialog :visible.sync="dialogFormVisible">
+      <el-form ref="dataForm" :model="temp" label-position="left" label-width="70px" style="width: 500px; margin-left:50px;">
+        <el-form-item label="失败原因" prop="reason">
+          <el-input :autosize="{ minRows: 6, maxRows: 8}" v-model="temp.reason" type="textarea" placeholder="Please input"/>
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button type="primary" @click="sendFailureReason">确定</el-button>
+        <el-button @click="dialogFormVisible = false">取消</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { fetchClassList, updateClassStatus } from '@/api/class'
+import { fetchClassList, updateClassStatusSuccess, updateClassStatusFailure, cancel } from '@/api/class'
 
 // options components
 import FilenameOption from './components/FilenameOption'
@@ -99,7 +114,12 @@ export default {
         inviteMobile: undefined,
         type: undefined
       },
-      total: 0
+      total: 0,
+      dialogFormVisible: false,
+      temp: {
+        reason: ''
+      },
+      failureEditId: ''
     }
   },
   created() {
@@ -113,7 +133,7 @@ export default {
           this.list = res.data.reverse().map(item => {
             item.childAge = this.childAge[item.childAge]
             item.studyInterval = this.studyInterval[item.studyInterval]
-            item.status = item.status === 0 ? '待确认' : '已确认'
+            item.status = item.status === 0 ? '待确认' : item.status === 1 ? '已确认' : '失败'
             return item
           })
           this.total = res.data.length
@@ -145,8 +165,8 @@ export default {
         return v[j]
       }))
     },
-    confirmClassStatus(row) {
-      updateClassStatus(row.id).then(res => {
+    cancelAction(id) {
+      cancel(id).then(res => {
         if (res.code === 0) {
           this.$message({
             message: '操作成功',
@@ -158,6 +178,34 @@ export default {
             message: res.error,
             type: 'error'
           })
+        }
+      })
+    },
+    confirmClassStatusSuccess(row) {
+      updateClassStatusSuccess(row.id).then(res => {
+        if (res.code === 0) {
+          this.$message({
+            message: '操作成功',
+            type: 'success'
+          })
+          this.getList()
+        } else {
+          this.$message({
+            message: res.error,
+            type: 'error'
+          })
+        }
+      })
+    },
+    openFailureDialog(id) {
+      this.dialogFormVisible = true
+      this.failureEditId = id
+    },
+    sendFailureReason() {
+      this.$refs['dataForm'].validate((valid) => {
+        if (valid) {
+          updateClassStatusFailure(this.failureEditId, this.temp.reason)
+          this.dialogFormVisible = false
         }
       })
     }
